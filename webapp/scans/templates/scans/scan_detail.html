@@ -1,0 +1,35 @@
+{% extends 'scans/base.html' %}
+{% block title %}{{ scan.scan_id }} — GOTTA.SCAN{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">{{ scan.scan_id }} <span class="badge {{ scan.status }}">{{ scan.get_status_display }}</span></h2>
+  <p class="muted">
+    {{ scan.image_count }} images · {{ scan.capture_mode|default:'unknown' }} mode ·
+    uploaded {{ scan.created_at|date:'M j, Y H:i' }}
+    {% if scan.completed_at %} · completed {{ scan.completed_at|date:'M j, Y H:i' }}{% endif %}
+  </p>
+  {% if scan.has_model %}
+    <a class="button" href="{{ scan.model_url }}" download>Download model.usdz</a>
+  {% elif scan.status == 'failed' %}
+    <p><strong>Error:</strong> {{ scan.error_message }}</p>
+  {% else %}
+    <p class="muted">Model will appear here when the worker finishes.</p>
+  {% endif %}
+</div>
+
+{% if scan.thumb_urls %}
+<div class="card">
+  <h3 style="margin-top:0">Capture preview</h3>
+  <div class="thumbs">
+    {% for url in scan.thumb_urls %}<img src="{{ url }}" alt="capture frame">{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if scan.worker_log %}
+<div class="card">
+  <h3 style="margin-top:0">Worker log</h3>
+  <pre>{{ scan.worker_log }}</pre>
+</div>
+{% endif %}
+{% endblock %}

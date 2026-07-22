@@ -1,0 +1,10 @@
+[project]
+name = "gottascan-web"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "django>=5.2",
+    "pillow>=12.3.0",
+    "pillow-heif>=1.5.0",
+    "requests>=2.34.2",
+]

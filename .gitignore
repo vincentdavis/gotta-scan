@@ -8,6 +8,12 @@ DerivedData/
 build/
 *.xcarchive
 
-# Swift Package Manager
+# Swift Package Manager / compiled worker CLI
 .build/
 .swiftpm/
+
+# Python / Django
+__pycache__/
+*.pyc
+.venv/
+webapp/data/
