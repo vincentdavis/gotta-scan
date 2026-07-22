@@ -11,6 +11,27 @@ from .models import Scan
 MEDIA_TMP = tempfile.mkdtemp(prefix='gottascan-test-media-')
 WORKER_HEADERS = {'X-Worker-Token': 'test-worker-token'}
 
+# A 10cm cube in meters — same shape the worker's --simulate mode produces.
+CUBE_OBJ = '\n'.join(
+    ['# test cube']
+    + [f'v {x} {y} {z}' for x, y, z in [
+        (-0.05, -0.05, -0.05), (0.05, -0.05, -0.05), (0.05, 0.05, -0.05), (-0.05, 0.05, -0.05),
+        (-0.05, -0.05, 0.05), (0.05, -0.05, 0.05), (0.05, 0.05, 0.05), (-0.05, 0.05, 0.05),
+    ]]
+    + [f'f {a} {b} {c}' for a, b, c in [
+        (1, 3, 2), (1, 4, 3), (5, 6, 7), (5, 7, 8),
+        (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6),
+        (3, 4, 8), (3, 8, 7), (4, 1, 5), (4, 5, 8),
+    ]]
+) + '\n'
+
+
+def make_obj_zip() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zf:
+        zf.writestr('model.obj', CUBE_OBJ)
+    return buffer.getvalue()
+
 
 def make_bundle(scan_id='scan-20260722-120000-abcd', image_count=3, metadata=True):
     buffer = io.BytesIO()
@@ -242,6 +263,163 @@ class WorkerFlowTests(TestCase):
         self.assertFalse(scan.has_model)
         self.assertIsNone(scan.completed_at)
         self.assertEqual(scan.worker_log, '')
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP, WORKER_TOKEN='test-worker-token', UPLOAD_TOKEN='')
+class ExportTests(TestCase):
+    def complete_with_obj(self):
+        self.client.put(
+            '/api/scans/upload',
+            data=make_bundle(),
+            content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-20260722-120000-abcd'},
+        )
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        response = self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={
+                'usdz': io.BytesIO(b'fake-usdz'),
+                'obj_zip': io.BytesIO(make_obj_zip()),
+                'log': 'done',
+            },
+            headers=WORKER_HEADERS,
+        )
+        self.assertEqual(response.status_code, 200)
+        return Scan.objects.get(scan_id=job['scan_id'])
+
+    def test_complete_with_obj_generates_exports(self):
+        scan = self.complete_with_obj()
+        self.assertEqual(scan.status, Scan.Status.COMPLETE)
+        manifest = scan.exports_manifest()
+        self.assertIsNotNone(manifest)
+        # 10cm cube in meters -> 100mm in every axis.
+        self.assertEqual(manifest['dimensions_mm'], [100.0, 100.0, 100.0])
+        self.assertTrue(manifest['watertight'])
+        for filename in manifest['files'].values():
+            self.assertTrue((scan.exports_dir / filename).exists())
+
+    def test_3mf_declares_millimeter_units(self):
+        scan = self.complete_with_obj()
+        with zipfile.ZipFile(scan.exports_dir / 'model.3mf') as zf:
+            model_xml = zf.read('3D/3dmodel.model').decode()
+        self.assertIn('unit="millimeter"', model_xml)
+
+    def test_stl_is_millimeter_scaled(self):
+        import trimesh
+        scan = self.complete_with_obj()
+        mesh = trimesh.load(scan.exports_dir / 'model-mm.stl')
+        for extent in mesh.extents:
+            self.assertAlmostEqual(float(extent), 100.0, places=3)
+
+    def test_glb_stays_in_meters(self):
+        import trimesh
+        scan = self.complete_with_obj()
+        mesh = trimesh.load(scan.exports_dir / 'model.glb', force='mesh')
+        for extent in mesh.extents:
+            self.assertAlmostEqual(float(extent), 0.1, places=5)
+
+    def test_complete_without_obj_still_works(self):
+        self.client.put(
+            '/api/scans/upload',
+            data=make_bundle(),
+            content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-no-obj'},
+        )
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        response = self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={'usdz': io.BytesIO(b'fake-usdz')},
+            headers=WORKER_HEADERS,
+        )
+        self.assertEqual(response.status_code, 200)
+        scan = Scan.objects.get(scan_id=job['scan_id'])
+        self.assertEqual(scan.status, Scan.Status.COMPLETE)
+        self.assertIsNone(scan.exports_manifest())
+
+    def test_corrupt_obj_does_not_fail_completion(self):
+        self.client.put(
+            '/api/scans/upload',
+            data=make_bundle(),
+            content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-bad-obj'},
+        )
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        bad_zip = io.BytesIO()
+        with zipfile.ZipFile(bad_zip, 'w') as zf:
+            zf.writestr('model.obj', 'not a valid obj at all\x00')
+        response = self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={'usdz': io.BytesIO(b'fake-usdz'), 'obj_zip': io.BytesIO(bad_zip.getvalue())},
+            headers=WORKER_HEADERS,
+        )
+        self.assertEqual(response.status_code, 200)
+        scan = Scan.objects.get(scan_id=job['scan_id'])
+        self.assertEqual(scan.status, Scan.Status.COMPLETE)
+        self.assertIn('[exports] failed', scan.worker_log)
+
+    def test_open_mesh_still_exports_and_reports_not_watertight(self):
+        # A cube missing two faces — like every real photogrammetry mesh, not watertight.
+        open_obj = '\n'.join(CUBE_OBJ.strip().splitlines()[:-2]) + '\n'
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zf:
+            zf.writestr('model.obj', open_obj)
+        self.client.put(
+            '/api/scans/upload', data=make_bundle(), content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-open-mesh'},
+        )
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        response = self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={'usdz': io.BytesIO(b'fake'), 'obj_zip': io.BytesIO(buffer.getvalue())},
+            headers=WORKER_HEADERS,
+        )
+        self.assertEqual(response.status_code, 200)
+        scan = Scan.objects.get(scan_id='scan-open-mesh')
+        manifest = scan.exports_manifest()
+        self.assertIsNotNone(manifest, f'exports failed: {scan.worker_log}')
+        self.assertIn('glb', manifest['files'])
+
+    def test_reprocess_clears_stale_exports(self):
+        scan = self.complete_with_obj()
+        self.assertIsNotNone(scan.exports_manifest())
+        # Requeue and complete again WITHOUT an obj zip (e.g. an older worker).
+        self.client.post(f'/api/worker/{scan.scan_id}/requeue', headers=WORKER_HEADERS)
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={'usdz': io.BytesIO(b'new-usdz')},
+            headers=WORKER_HEADERS,
+        )
+        scan = Scan.objects.get(scan_id=scan.scan_id)
+        # Old exports must not survive to describe the new reconstruction.
+        self.assertIsNone(scan.exports_manifest())
+        self.assertIsNone(scan.glb_url)
+
+    def test_failed_regeneration_clears_stale_exports(self):
+        scan = self.complete_with_obj()
+        self.client.post(f'/api/worker/{scan.scan_id}/requeue', headers=WORKER_HEADERS)
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        bad_zip = io.BytesIO()
+        with zipfile.ZipFile(bad_zip, 'w') as zf:
+            zf.writestr('model.obj', 'garbage')
+        self.client.post(
+            f"/api/worker/{job['scan_id']}/complete",
+            data={'usdz': io.BytesIO(b'new-usdz'), 'obj_zip': io.BytesIO(bad_zip.getvalue())},
+            headers=WORKER_HEADERS,
+        )
+        scan = Scan.objects.get(scan_id=scan.scan_id)
+        self.assertIsNone(scan.exports_manifest())
+
+    def test_viewer_page(self):
+        scan = self.complete_with_obj()
+        response = self.client.get(f'/scans/{scan.scan_id}/viewer/')
+        self.assertContains(response, 'model.glb')
+        # Scan without exports -> 404
+        self.client.put(
+            '/api/scans/upload', data=make_bundle(), content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-no-viewer'},
+        )
+        self.assertEqual(self.client.get('/scans/scan-no-viewer/viewer/').status_code, 404)
 
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP, WORKER_TOKEN='test-worker-token', UPLOAD_TOKEN='')

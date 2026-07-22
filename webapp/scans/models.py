@@ -64,6 +64,45 @@ class Scan(models.Model):
     def has_model(self) -> bool:
         return self.model_usdz_path.exists()
 
+    @property
+    def exports_dir(self) -> Path:
+        return self.models_dir / 'exports'
+
+    def exports_manifest(self) -> dict | None:
+        manifest_path = self.exports_dir / 'exports.json'
+        if not manifest_path.exists():
+            return None
+        import json
+        try:
+            return json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def export_downloads(self) -> list[dict]:
+        """(label, url, note) for each generated export, for the detail template."""
+        manifest = self.exports_manifest()
+        if not manifest:
+            return []
+        base = f'{settings.MEDIA_URL}scans/{self.scan_id}/models/exports/'
+        labels = {
+            '3mf': ('3MF (print — recommended)', 'millimeters, open in PrusaSlicer/Bambu/Orca/Cura'),
+            'stl': ('STL (print — legacy)', 'pre-scaled to millimeters'),
+            'onshape_obj': ('OBJ for OnShape', 'decimated, millimeters — pick "millimeter" at import'),
+            'glb': ('GLB (web/Blender)', 'meters, textured'),
+        }
+        downloads = []
+        for key, filename in manifest.get('files', {}).items():
+            label, note = labels.get(key, (key, ''))
+            downloads.append({'label': label, 'url': base + filename, 'note': note})
+        return downloads
+
+    @property
+    def glb_url(self) -> str | None:
+        manifest = self.exports_manifest()
+        if manifest and 'glb' in manifest.get('files', {}):
+            return f"{settings.MEDIA_URL}scans/{self.scan_id}/models/exports/{manifest['files']['glb']}"
+        return None
+
     def thumb_urls(self) -> list[str]:
         if not self.thumbs_dir.is_dir():
             return []

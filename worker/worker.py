@@ -11,6 +11,7 @@ The Swift CLI is compiled on first use (cached in worker/.build/).
 """
 
 import argparse
+import contextlib
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,25 @@ IMAGE_EXTENSIONS = {'.heic', '.heif', '.jpg', '.jpeg', '.png'}
 
 def log(message: str) -> None:
     print(f'[worker] {message}', flush=True)
+
+
+def simulated_cube_obj(size_m: float = 0.1) -> str:
+    """A 10cm cube in meters (PhotogrammetrySession's unit) for --simulate runs,
+    so the server-side export pipeline has real geometry to work with."""
+    s = size_m / 2
+    vertices = [
+        (-s, -s, -s), (s, -s, -s), (s, s, -s), (-s, s, -s),
+        (-s, -s, s), (s, -s, s), (s, s, s), (-s, s, s),
+    ]
+    faces = [
+        (1, 3, 2), (1, 4, 3), (5, 6, 7), (5, 7, 8),
+        (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6),
+        (3, 4, 8), (3, 8, 7), (4, 1, 5), (4, 5, 8),
+    ]
+    lines = ['# GOTTA.SCAN simulated cube']
+    lines += [f'v {x} {y} {z}' for x, y, z in vertices]
+    lines += [f'f {a} {b} {c}' for a, b, c in faces]
+    return '\n'.join(lines) + '\n'
 
 
 def ensure_cli() -> Path:
@@ -118,30 +138,46 @@ def process_job(session: requests.Session, server: str, job: dict, args) -> None
             raise RuntimeError('no images found in bundle')
 
         output = tmp_path / 'model.usdz'
+        obj_dir = tmp_path / 'obj'
         if args.simulate:
-            log('simulate mode: writing placeholder model')
+            log('simulate mode: writing placeholder usdz + cube obj')
             output.write_bytes(b'GOTTASCAN-SIMULATED-USDZ')
+            obj_dir.mkdir()
+            (obj_dir / 'model.obj').write_text(simulated_cube_obj())
             cli_log = 'simulated'
         else:
             cli = ensure_cli()
             log(f'reconstructing at detail={args.detail} (this can take a while)…')
             result = subprocess.run(
-                [str(cli), str(images_dir), str(output), args.detail],
+                [str(cli), str(images_dir), str(output), args.detail, str(obj_dir)],
                 capture_output=True, text=True, timeout=args.timeout,
             )
             cli_log = (result.stdout + result.stderr)[-20000:]
             if result.returncode != 0 or not output.exists():
                 raise RuntimeError(f'reconstruction failed (exit {result.returncode}):\n{cli_log[-2000:]}')
 
+        # Zip the OBJ folder (obj + mtl + textures) for upload alongside the usdz.
+        obj_zip = tmp_path / 'model-obj.zip'
+        if obj_dir.is_dir() and any(obj_dir.iterdir()):
+            with zipfile.ZipFile(obj_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for path in sorted(obj_dir.rglob('*')):
+                    if path.is_file():
+                        zf.write(path, path.relative_to(obj_dir))
+
         # Retry with the model still on disk: throwing away a finished
         # reconstruction over a transient network blip is the worst outcome.
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                with open(output, 'rb') as model_file:
+                with contextlib.ExitStack() as stack:
+                    files = {
+                        'usdz': ('model.usdz', stack.enter_context(open(output, 'rb')), 'model/vnd.usdz+zip'),
+                    }
+                    if obj_zip.exists():
+                        files['obj_zip'] = ('model-obj.zip', stack.enter_context(open(obj_zip, 'rb')), 'application/zip')
                     response = session.post(
                         f'{server}/api/worker/{scan_id}/complete',
-                        files={'usdz': ('model.usdz', model_file, 'model/vnd.usdz+zip')},
+                        files=files,
                         data={'log': cli_log},
                         timeout=600,
                     )

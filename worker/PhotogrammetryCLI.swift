@@ -1,6 +1,10 @@
 // GOTTA.SCAN Mac worker: wraps macOS RealityKit PhotogrammetrySession as a CLI.
 // Build: swiftc -O -parse-as-library PhotogrammetryCLI.swift -o photogrammetry-cli
-// Usage: photogrammetry-cli <images-dir> <output.usdz> [preview|reduced|medium|full|raw]
+// Usage: photogrammetry-cli <images-dir> <output.usdz> [preview|reduced|medium|full|raw] [obj-output-dir]
+//
+// When obj-output-dir is given, a second modelFile request with a directory URL
+// makes PhotogrammetrySession write OBJ + MTL + texture maps there (macOS 12+),
+// so no USDZ conversion step is ever needed downstream.
 
 import Foundation
 import RealityKit
@@ -10,12 +14,13 @@ struct PhotogrammetryCLI {
     static func main() async {
         let args = CommandLine.arguments
         guard args.count >= 3 else {
-            FileHandle.standardError.write(Data("usage: photogrammetry-cli <images-dir> <output.usdz> [detail]\n".utf8))
+            FileHandle.standardError.write(Data("usage: photogrammetry-cli <images-dir> <output.usdz> [detail] [obj-output-dir]\n".utf8))
             exit(64)
         }
         let inputURL = URL(fileURLWithPath: args[1], isDirectory: true)
         let outputURL = URL(fileURLWithPath: args[2])
         let detailName = args.count > 3 ? args[3] : "full"
+        let objDirectory = args.count > 4 ? args[4] : nil
 
         let detail: PhotogrammetrySession.Request.Detail
         switch detailName {
@@ -32,7 +37,16 @@ struct PhotogrammetryCLI {
         do {
             let configuration = PhotogrammetrySession.Configuration()
             let session = try PhotogrammetrySession(input: inputURL, configuration: configuration)
-            try session.process(requests: [.modelFile(url: outputURL, detail: detail)])
+
+            var requests: [PhotogrammetrySession.Request] = [.modelFile(url: outputURL, detail: detail)]
+            if let objDirectory {
+                // isDirectory: true is load-bearing — a bare path URL makes the
+                // session treat this as a (bogus) usdz file request.
+                let objURL = URL(fileURLWithPath: objDirectory, isDirectory: true)
+                try FileManager.default.createDirectory(at: objURL, withIntermediateDirectories: true)
+                requests.append(.modelFile(url: objURL, detail: detail))
+            }
+            try session.process(requests: requests)
 
             // outputs never ends on its own after .processingComplete — exit explicitly.
             for try await output in session.outputs {

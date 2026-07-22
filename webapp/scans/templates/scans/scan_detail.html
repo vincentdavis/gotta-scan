@@ -9,13 +9,37 @@
     {% if scan.completed_at %} · completed {{ scan.completed_at|date:'M j, Y H:i' }}{% endif %}
   </p>
   {% if scan.has_model %}
-    <a class="button" href="{{ scan.model_url }}" download>Download model.usdz</a>
+    {% if scan.glb_url %}<a class="button" href="{% url 'scans:viewer' scan.scan_id %}">Open 3D viewer</a>{% endif %}
+    <a class="button" style="background:#2c7bd4; color:#fff;" href="{{ scan.model_url }}" download>USDZ (AR Quick Look)</a>
   {% elif scan.status == 'failed' %}
     <p><strong>Error:</strong> {{ scan.error_message }}</p>
   {% else %}
     <p class="muted">Model will appear here when the worker finishes.</p>
   {% endif %}
 </div>
+
+{% if scan.export_downloads %}
+<div class="card">
+  <h3 style="margin-top:0">Exports</h3>
+  {% with manifest=scan.exports_manifest %}
+  {% if manifest %}
+  <p class="muted">
+    Real-world size: <strong>{{ manifest.dimensions_mm.0 }} × {{ manifest.dimensions_mm.1 }} × {{ manifest.dimensions_mm.2 }} mm</strong>
+    · {{ manifest.faces }} faces
+    · {% if manifest.watertight %}✅ watertight (printable){% else %}⚠️ not watertight — may need repair before printing{% endif %}
+  </p>
+  {% endif %}
+  {% endwith %}
+  <table>
+    {% for item in scan.export_downloads %}
+    <tr>
+      <td><a href="{{ item.url }}" download><strong>{{ item.label }}</strong></a></td>
+      <td class="muted">{{ item.note }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
 
 {% if scan.thumb_urls %}
 <div class="card">

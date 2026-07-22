@@ -7,6 +7,7 @@ app_name = 'scans'
 urlpatterns = [
     path('', views.scan_list, name='list'),
     path('scans/<str:scan_id>/', views.scan_detail, name='detail'),
+    path('scans/<str:scan_id>/viewer/', views.scan_viewer, name='viewer'),
 
     # iOS app upload
     path('api/scans/upload', api.upload_bundle, name='api-upload'),

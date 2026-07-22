@@ -11,8 +11,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from .exports import ExportError, generate_exports
 from .models import Scan
-from .services import BundleError, ingest_bundle
+from .services import BundleError, ingest_bundle, safe_extract
 
 logger = logging.getLogger(__name__)
 
@@ -167,14 +168,48 @@ def complete_job(request, scan_id):
     if upload is None:
         return _error('Missing usdz file field.', 400)
 
+    import shutil
+
     scan.models_dir.mkdir(parents=True, exist_ok=True)
     with open(scan.model_usdz_path, 'wb') as out:
         for chunk in upload.chunks():
             out.write(chunk)
 
+    # This completion replaces the model entirely: stale exports from a previous
+    # run must never be served against the new reconstruction.
+    if scan.exports_dir.exists():
+        shutil.rmtree(scan.exports_dir)
+
+    worker_log = request.POST.get('log', '')[-20000:]
+
+    # Optional OBJ master mesh (obj + mtl + textures, zipped by the worker).
+    # Export generation is best-effort: a bad mesh must not fail the job.
+    obj_zip = request.FILES.get('obj_zip')
+    if obj_zip is not None:
+        obj_zip_path = scan.models_dir / 'model-obj.zip'
+        with open(obj_zip_path, 'wb') as out:
+            for chunk in obj_zip.chunks():
+                out.write(chunk)
+        obj_dir = scan.models_dir / 'obj'
+        try:
+            if obj_dir.exists():
+                shutil.rmtree(obj_dir)
+            safe_extract(obj_zip_path, obj_dir, settings.SCAN_MAX_EXTRACTED_BYTES)
+            manifest = generate_exports(scan)
+            worker_log += (
+                f"\n[exports] dimensions_mm={manifest['dimensions_mm']} "
+                f"watertight={manifest['watertight']} faces={manifest['faces']}"
+            )
+        except (BundleError, ExportError) as exc:
+            logger.warning('Export generation failed for %s: %s', scan.scan_id, exc)
+            worker_log += f'\n[exports] failed: {exc}'
+        except Exception:
+            logger.exception('Export generation crashed for %s', scan.scan_id)
+            worker_log += '\n[exports] failed: internal error'
+
     scan.status = Scan.Status.COMPLETE
     scan.completed_at = timezone.now()
-    scan.worker_log = request.POST.get('log', '')[-20000:]
+    scan.worker_log = worker_log
     scan.error_message = ''
     scan.save()
     return JsonResponse({'scan_id': scan.scan_id, 'status': scan.status})
