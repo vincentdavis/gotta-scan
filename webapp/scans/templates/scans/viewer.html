@@ -67,6 +67,7 @@ const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e9);
 let meshRoot = null;
 let bbox = null;
 const meshes = [];
+const wireframes = [];
 
 new GLTFLoader().load('{{ glb_url|escapejs }}', (gltf) => {
   meshRoot = gltf.scene;
@@ -75,7 +76,26 @@ new GLTFLoader().load('{{ glb_url|escapejs }}', (gltf) => {
     if (node.isMesh) {
       meshes.push(node);
       const materials = Array.isArray(node.material) ? node.material : [node.material];
-      materials.forEach((m) => { m.clippingPlanes = [clipPlane]; m.side = THREE.DoubleSide; });
+      materials.forEach((m) => {
+        m.clippingPlanes = [clipPlane];
+        m.side = THREE.DoubleSide;
+        // Push filled faces slightly back so the wireframe overlay reads on top.
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = 1;
+        m.polygonOffsetUnits = 1;
+      });
+      // Bright unlit edge overlay — material.wireframe alone is lit gray on a
+      // near-black background and effectively invisible. Parented to the mesh
+      // so it inherits its transform; clipped alongside it; not raycastable.
+      const wire = new THREE.LineSegments(
+        new THREE.WireframeGeometry(node.geometry),
+        new THREE.LineBasicMaterial({ color: 0x3fd8c2 }),
+      );
+      wire.material.clippingPlanes = [clipPlane];
+      wire.visible = false;
+      wire.raycast = () => {};
+      node.add(wire);
+      wireframes.push(wire);
     }
   });
   const box = new THREE.Box3().setFromObject(meshRoot);
@@ -200,16 +220,13 @@ clipFlipButton.addEventListener('click', () => {
 });
 clipSlider.addEventListener('input', updateClipPlane);
 
-// --- Wireframe toggle ---
+// --- Wireframe toggle: show the bright edge overlay over the shaded mesh ---
 const wireButton = document.getElementById('tool-wire');
 let wired = false;
 wireButton.addEventListener('click', () => {
   wired = !wired;
   wireButton.classList.toggle('active', wired);
-  meshes.forEach((node) => {
-    const materials = Array.isArray(node.material) ? node.material : [node.material];
-    materials.forEach((m) => { m.wireframe = wired; });
-  });
+  wireframes.forEach((w) => { w.visible = wired; });
 });
 
 window.addEventListener('resize', () => {
