@@ -1,5 +1,9 @@
 {% extends 'scans/base.html' %}
 {% block content %}
+<div class="card" style="display:flex; align-items:center; gap:14px;">
+  <a href="{% url 'scans:upload' %}" class="button">📷 Upload photos</a>
+  <span class="muted">or capture from the GOTTA.SCAN iPhone app</span>
+</div>
 <div class="card">
   {% if scans %}
   <table>

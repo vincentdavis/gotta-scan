@@ -46,6 +46,9 @@ SCAN_STALE_CLAIM_SECONDS = 2 * 3600
 # How many extracted images get browser-viewable JPEG thumbnails.
 SCAN_THUMBNAIL_COUNT = 8
 
+# Photogrammetry sets run to hundreds of photos; Django's default cap is 100.
+DATA_UPLOAD_MAX_NUMBER_FILES = 2000
+
 
 # Application definition
 

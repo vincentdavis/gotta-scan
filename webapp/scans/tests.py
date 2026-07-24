@@ -423,6 +423,81 @@ class ExportTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP, WORKER_TOKEN='test-worker-token', UPLOAD_TOKEN='')
+class PhotoUploadTests(TestCase):
+    def photo(self, name='IMG_0001.JPG', color=(120, 60, 30)):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        buffer = io.BytesIO()
+        Image.new('RGB', (48, 48), color).save(buffer, 'JPEG')
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/jpeg')
+
+    def test_page_renders(self):
+        self.assertContains(self.client.get('/upload/'), 'Drop photos here')
+
+    def test_upload_creates_queued_scan_with_worker_ready_bundle(self):
+        photos = [self.photo(f'IMG_{i:04d}.JPG', (i * 20, 60, 30)) for i in range(3)]
+        response = self.client.post('/upload/', {'photos': photos})
+        self.assertEqual(response.status_code, 302)
+
+        scan = Scan.objects.get(capture_mode='photos')
+        self.assertEqual(scan.status, Scan.Status.QUEUED)
+        self.assertEqual(scan.image_count, 3)
+        self.assertTrue(scan.bundle_path.exists())
+
+        # The bundle must match the layout the worker expects.
+        with zipfile.ZipFile(scan.bundle_path) as zf:
+            names = zf.namelist()
+        self.assertIn('metadata.json', names)
+        self.assertEqual(sum(1 for n in names if n.startswith('Images/')), 3)
+
+        # And the worker must be able to claim and download it.
+        job = self.client.post('/api/worker/claim', headers=WORKER_HEADERS).json()['job']
+        self.assertEqual(job['scan_id'], scan.scan_id)
+        bundle = self.client.get(job['bundle_url'], headers=WORKER_HEADERS)
+        self.assertEqual(bundle.status_code, 200)
+
+    def test_ajax_upload_returns_redirect_json(self):
+        response = self.client.post(
+            '/upload/', {'photos': [self.photo()]},
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('redirect', response.json())
+
+    def test_rejects_upload_with_no_images(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        response = self.client.post(
+            '/upload/', {'photos': [SimpleUploadedFile('notes.txt', b'hello', 'text/plain')]},
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Scan.objects.exists())
+
+    def test_non_image_files_are_filtered_out(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.client.post('/upload/', {'photos': [
+            self.photo('a.jpg'),
+            SimpleUploadedFile('readme.txt', b'x', 'text/plain'),
+            self.photo('b.jpg'),
+        ]})
+        self.assertEqual(Scan.objects.get().image_count, 2)
+
+    def test_malicious_filenames_are_sanitised(self):
+        self.client.post('/upload/', {'photos': [
+            self.photo('../../../etc/passwd.jpg'),
+            self.photo('..\\..\\windows.jpg'),
+        ]})
+        scan = Scan.objects.get()
+        with zipfile.ZipFile(scan.bundle_path) as zf:
+            names = zf.namelist()
+        for name in names:
+            self.assertNotIn('..', name)
+        self.assertEqual(scan.image_count, 2)
+        # Files land inside the scan directory, nowhere else.
+        self.assertTrue((scan.extracted_dir / 'Images').is_dir())
+
+
+@override_settings(MEDIA_ROOT=MEDIA_TMP, WORKER_TOKEN='test-worker-token', UPLOAD_TOKEN='')
 class UITests(TestCase):
     def test_list_and_detail_render(self):
         self.client.put(

@@ -6,6 +6,7 @@ app_name = 'scans'
 
 urlpatterns = [
     path('', views.scan_list, name='list'),
+    path('upload/', views.upload_photos, name='upload'),
     path('scans/<str:scan_id>/', views.scan_detail, name='detail'),
     path('scans/<str:scan_id>/viewer/', views.scan_viewer, name='viewer'),
 
