@@ -357,8 +357,8 @@ class ExportTests(TestCase):
         self.assertEqual(scan.status, Scan.Status.COMPLETE)
         self.assertIn('[exports] failed', scan.worker_log)
 
-    def test_open_mesh_still_exports_and_reports_not_watertight(self):
-        # A cube missing two faces — like every real photogrammetry mesh, not watertight.
+    def test_open_mesh_is_hole_filled_for_printing(self):
+        # A cube missing two faces — like every real photogrammetry scan, open.
         open_obj = '\n'.join(CUBE_OBJ.strip().splitlines()[:-2]) + '\n'
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w') as zf:
@@ -377,7 +377,15 @@ class ExportTests(TestCase):
         scan = Scan.objects.get(scan_id='scan-open-mesh')
         manifest = scan.exports_manifest()
         self.assertIsNotNone(manifest, f'exports failed: {scan.worker_log}')
-        self.assertIn('glb', manifest['files'])
+
+        # The print exports must be a hole-filled watertight solid.
+        self.assertTrue(manifest['print_watertight'])
+        self.assertIsNotNone(manifest['volume_cm3'])
+
+        # Verify the actual STL on disk is watertight, not just the flag.
+        import trimesh
+        stl = trimesh.load(scan.exports_dir / 'model-mm.stl')
+        self.assertTrue(stl.is_watertight)
 
     def test_reprocess_clears_stale_exports(self):
         scan = self.complete_with_obj()

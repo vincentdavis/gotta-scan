@@ -25,8 +25,11 @@
   {% if manifest %}
   <p class="muted">
     Real-world size: <strong>{{ manifest.dimensions_mm.0 }} × {{ manifest.dimensions_mm.1 }} × {{ manifest.dimensions_mm.2 }} mm</strong>
-    · {{ manifest.faces }} faces
-    · {% if manifest.watertight %}✅ watertight (printable){% else %}⚠️ not watertight — may need repair before printing{% endif %}
+    · {{ manifest.faces }} faces{% if manifest.volume_cm3 %} · {{ manifest.volume_cm3 }} cm³{% endif %}
+  </p>
+  <p class="muted">
+    Print files (STL / 3MF):
+    {% if manifest.print_watertight %}✅ hole-filled &amp; watertight — ready to slice{% else %}⚠️ could not be fully closed — check for holes before printing{% endif %}
   </p>
   {% endif %}
   {% endwith %}

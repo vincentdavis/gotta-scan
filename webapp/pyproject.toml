@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=2.5.1",
     "pillow>=12.3.0",
     "pillow-heif>=1.5.0",
+    "pymeshlab>=2025.7.post1",
     "requests>=2.34.2",
     "scipy>=1.18.0",
     "trimesh>=4.12.2",
