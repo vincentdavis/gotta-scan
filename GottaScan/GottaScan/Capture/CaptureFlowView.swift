@@ -25,6 +25,8 @@ struct CaptureFlowView: View {
     @State private var style: CaptureStyle
     @State private var errorMessage: String?
     @State private var didFinish = false
+    @State private var passIndex = 1
+    @State private var showCoverage = false
 
     init(scan: ScanRecord, onFinished: @escaping (_ completed: Bool) -> Void) {
         self.scan = scan
@@ -37,9 +39,18 @@ struct CaptureFlowView: View {
             if let session {
                 ObjectCaptureView(session: session)
                     .ignoresSafeArea()
+
+                // Coverage inspection: the accumulated LiDAR point cloud, so the
+                // user can see which parts of the shape still have gaps.
+                if showCoverage, case .capturing = session.state {
+                    CoverageOverlay(session: session, onClose: { showCoverage = false })
+                }
+
                 CaptureOverlay(
                     session: session,
                     style: style,
+                    passIndex: $passIndex,
+                    showCoverage: $showCoverage,
                     onCancel: { cancel() }
                 )
             } else {
@@ -109,10 +120,40 @@ struct CaptureFlowView: View {
     }
 }
 
+/// Full-screen review of the captured point cloud, so the user can spot gaps
+/// before finishing and go re-capture the thin/missing regions.
+private struct CoverageOverlay: View {
+    let session: ObjectCaptureSession
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            VStack(spacing: 14) {
+                Text("Coverage so far")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text("Rotate to inspect. Sparse or empty areas still need more shots.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                ObjectCapturePointCloudView(session: session)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                Button("Resume capture", action: onClose)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            }
+            .padding(24)
+        }
+    }
+}
+
 /// State-driven controls layered over the ObjectCaptureView.
 private struct CaptureOverlay: View {
     let session: ObjectCaptureSession
     let style: CaptureStyle
+    @Binding var passIndex: Int
+    @Binding var showCoverage: Bool
     let onCancel: () -> Void
 
     var body: some View {
@@ -126,9 +167,21 @@ private struct CaptureOverlay: View {
                         .tint(.white)
                 }
                 Spacer()
+                if case .capturing = session.state {
+                    Button {
+                        showCoverage = true
+                    } label: {
+                        Label("Coverage", systemImage: "cube.transparent")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                }
                 shotCounter
             }
             .padding()
+
+            feedbackBanner
+                .animation(.easeInOut(duration: 0.2), value: Self.feedbackMessage(session.feedback)?.text)
 
             Spacer()
 
@@ -155,6 +208,32 @@ private struct CaptureOverlay: View {
                 .padding(.vertical, 6)
                 .background(.ultraThinMaterial, in: Capsule())
         }
+    }
+
+    /// Live coaching from ObjectCaptureSession.feedback — the single most useful
+    /// signal, shown while capturing so bad shots are corrected as they happen.
+    @ViewBuilder
+    private var feedbackBanner: some View {
+        if case .capturing = session.state, let message = Self.feedbackMessage(session.feedback) {
+            Label(message.text, systemImage: message.symbol)
+                .font(.headline)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .foregroundStyle(.white)
+                .padding(.top, 8)
+        }
+    }
+
+    /// Highest-priority active feedback mapped to an icon + message.
+    static func feedbackMessage(_ feedback: Set<ObjectCaptureSession.Feedback>) -> (symbol: String, text: String)? {
+        if feedback.contains(.objectTooClose) { return ("arrow.up.left.and.arrow.down.right", "Move farther away") }
+        if feedback.contains(.objectTooFar) { return ("arrow.down.right.and.arrow.up.left", "Move closer") }
+        if feedback.contains(.environmentTooDark) { return ("lightbulb", "More light needed") }
+        if feedback.contains(.environmentLowLight) { return ("lightbulb", "More light needed") }
+        if feedback.contains(.movingTooFast) { return ("tortoise", "Slow down") }
+        if feedback.contains(.outOfFieldOfView) { return ("viewfinder", "Aim at your object") }
+        return nil
     }
 
     @ViewBuilder
@@ -196,11 +275,35 @@ private struct CaptureOverlay: View {
         case .capturing:
             VStack(spacing: 12) {
                 if session.userCompletedScanPass {
-                    Text("Scan pass complete — finish, or keep capturing for more coverage.")
+                    Text("Pass \(passIndex) complete. Add another angle, flip for the underside, or finish.")
                         .font(.callout)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
+                    HStack(spacing: 12) {
+                        Button {
+                            // Another orbit at a different height, same bounding box.
+                            session.beginNewScanPass()
+                            passIndex += 1
+                        } label: {
+                            Label("Another angle", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.white)
+
+                        // Flipping captures the underside — the surface that would
+                        // otherwise be an open hole in the reconstruction.
+                        if !session.feedback.contains(.objectNotFlippable) {
+                            Button {
+                                session.beginNewScanPassAfterFlip()
+                                passIndex += 1
+                            } label: {
+                                Label("Flip", systemImage: "arrow.uturn.up")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                        }
+                    }
                 }
                 Button("Finish") { session.finish() }
                     .buttonStyle(.borderedProminent)
