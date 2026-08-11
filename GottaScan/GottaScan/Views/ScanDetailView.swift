@@ -11,8 +11,10 @@ struct ScanDetailView: View {
 
     @EnvironmentObject private var store: ScanStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @StateObject private var reconstructor = Reconstructor()
     @StateObject private var uploader = Uploader()
+    @StateObject private var resultService = ResultService()
 
     @AppStorage("uploadEndpoint") private var uploadEndpoint = ""
 
@@ -146,6 +148,12 @@ struct ScanDetailView: View {
                 }
             }
 
+            if showServerSection {
+                Section("On the server") {
+                    serverResultContent
+                }
+            }
+
             Section {
                 Button(role: .destructive) {
                     store.delete(scan)
@@ -175,6 +183,72 @@ struct ScanDetailView: View {
                 ScanRecord.folderSizeBytes(of: folderURL)
             }.value
         }
+        .task(id: scan.metadata.uploadedAt) {
+            if scan.metadata.uploadedAt != nil { fetchServerResult() }
+        }
+        .onChange(of: uploader.status) { _, newStatus in
+            // A just-finished upload won't be reflected in this view's immutable
+            // scan copy, so trigger the server fetch directly on completion.
+            if newStatus == .done { fetchServerResult() }
+        }
+    }
+
+    private var showServerSection: Bool {
+        !uploadEndpoint.isEmpty && (scan.metadata.uploadedAt != nil || uploader.status == .done)
+    }
+
+    @ViewBuilder
+    private var serverResultContent: some View {
+        switch resultService.state {
+        case .idle, .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Checking status…").font(.caption).foregroundStyle(.secondary)
+            }
+        case .loaded(let result):
+            if result.isComplete {
+                if let dims = result.dimensionsText {
+                    Label(dims, systemImage: "ruler")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    openURL(result.bestLink)
+                } label: {
+                    Label("View 3D model on server", systemImage: "safari")
+                }
+                ShareLink(item: result.detailURL) {
+                    Label("Share link", systemImage: "square.and.arrow.up")
+                }
+            } else if result.isFailed {
+                Label(result.errorMessage ?? "Processing failed on the server.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                shareDetailLink(result.detailURL)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Processing on the server…").font(.caption).foregroundStyle(.secondary)
+                }
+                Button("Refresh") { fetchServerResult() }.font(.caption)
+                shareDetailLink(result.detailURL)
+            }
+        case .failed(let message):
+            Text(message).font(.caption).foregroundStyle(.secondary)
+            Button("Retry") { fetchServerResult() }.font(.caption)
+        }
+    }
+
+    @ViewBuilder
+    private func shareDetailLink(_ url: URL) -> some View {
+        ShareLink(item: url) {
+            Label("Share link", systemImage: "square.and.arrow.up")
+        }
+    }
+
+    private func fetchServerResult() {
+        guard !uploadEndpoint.isEmpty else { return }
+        resultService.fetch(uploadEndpoint: uploadEndpoint, scanID: scan.id)
     }
 
     private func exportZip() {

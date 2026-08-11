@@ -104,7 +104,43 @@ def upload_bundle(request):
         scan.save()
         return _error('Internal error during ingest.', 500)
 
-    return JsonResponse({'scan_id': scan.scan_id, 'status': scan.status, 'image_count': scan.image_count})
+    return JsonResponse({
+        'scan_id': scan.scan_id,
+        'status': scan.status,
+        'image_count': scan.image_count,
+        'detail_url': request.build_absolute_uri(reverse('scans:detail', args=[scan.scan_id])),
+        'status_url': request.build_absolute_uri(reverse('scans:api-status', args=[scan.scan_id])),
+    })
+
+
+def scan_status(request, scan_id):
+    """GET: JSON status + absolute links so the iOS app can view/share the result.
+
+    Absolute URLs are built from the request host, so they match whatever address
+    the app reached the server on (LAN IP now, public host once deployed).
+    """
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+    try:
+        scan = Scan.objects.get(scan_id=scan_id)
+    except Scan.DoesNotExist:
+        return _error('Unknown scan.', 404)
+
+    manifest = scan.exports_manifest()
+    has_viewer = scan.glb_url is not None
+    return JsonResponse({
+        'scan_id': scan.scan_id,
+        'status': scan.status,
+        'has_model': scan.has_model,
+        'image_count': scan.image_count,
+        'detail_url': request.build_absolute_uri(reverse('scans:detail', args=[scan.scan_id])),
+        'viewer_url': request.build_absolute_uri(reverse('scans:viewer', args=[scan.scan_id])) if has_viewer else None,
+        'model_usdz_url': request.build_absolute_uri(scan.model_url) if scan.has_model else None,
+        'model_glb_url': request.build_absolute_uri(scan.glb_url) if has_viewer else None,
+        'dimensions_mm': manifest.get('dimensions_mm') if manifest else None,
+        'print_watertight': manifest.get('print_watertight') if manifest else None,
+        'error_message': scan.error_message or None,
+    })
 
 
 @csrf_exempt

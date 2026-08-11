@@ -10,8 +10,9 @@ urlpatterns = [
     path('scans/<str:scan_id>/', views.scan_detail, name='detail'),
     path('scans/<str:scan_id>/viewer/', views.scan_viewer, name='viewer'),
 
-    # iOS app upload
+    # iOS app upload + result status
     path('api/scans/upload', api.upload_bundle, name='api-upload'),
+    path('api/scans/<str:scan_id>/status', api.scan_status, name='api-status'),
 
     # Mac worker job queue
     path('api/worker/claim', api.claim_job, name='api-claim'),

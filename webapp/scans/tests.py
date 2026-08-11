@@ -429,6 +429,40 @@ class ExportTests(TestCase):
         )
         self.assertEqual(self.client.get('/scans/scan-no-viewer/viewer/').status_code, 404)
 
+    def test_status_endpoint_complete(self):
+        scan = self.complete_with_obj()
+        data = self.client.get(f'/api/scans/{scan.scan_id}/status').json()
+        self.assertEqual(data['status'], 'complete')
+        self.assertTrue(data['has_model'])
+        # Absolute URLs the app can open/share directly.
+        self.assertTrue(data['detail_url'].startswith('http'))
+        self.assertIn(f'/scans/{scan.scan_id}/', data['detail_url'])
+        self.assertTrue(data['viewer_url'].endswith('/viewer/'))
+        self.assertTrue(data['model_glb_url'].endswith('.glb'))
+        self.assertEqual(data['dimensions_mm'], [100.0, 100.0, 100.0])
+
+    def test_status_endpoint_queued_has_no_viewer(self):
+        self.client.put(
+            '/api/scans/upload', data=make_bundle(), content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-queued-status'},
+        )
+        data = self.client.get('/api/scans/scan-queued-status/status').json()
+        self.assertEqual(data['status'], 'queued')
+        self.assertFalse(data['has_model'])
+        self.assertIsNone(data['viewer_url'])
+        self.assertTrue(data['detail_url'].startswith('http'))
+
+    def test_status_endpoint_unknown_scan(self):
+        self.assertEqual(self.client.get('/api/scans/nope/status').status_code, 404)
+
+    def test_upload_response_includes_links(self):
+        data = self.client.put(
+            '/api/scans/upload', data=make_bundle(), content_type='application/zip',
+            headers={'X-Scan-Id': 'scan-links'},
+        ).json()
+        self.assertIn('/scans/scan-links/', data['detail_url'])
+        self.assertTrue(data['status_url'].endswith('/status'))
+
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP, WORKER_TOKEN='test-worker-token', UPLOAD_TOKEN='')
 class PhotoUploadTests(TestCase):
