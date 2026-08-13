@@ -59,13 +59,15 @@ final class Uploader: ObservableObject {
 
     /// The store is passed in so completion side effects (markUploaded, activeUploads)
     /// persist even if the initiating view has been dismissed mid-upload.
-    func upload(scan: ScanRecord, endpoint: URL, store: ScanStore) {
+    /// `token`, when non-empty, is sent as X-Upload-Token so a token-protected
+    /// server accepts the upload.
+    func upload(scan: ScanRecord, endpoint: URL, token: String, store: ScanStore) {
         guard status != .zipping, status != .uploading else { return }
         guard !store.activeUploads.contains(scan.id) else { return }
-        Task { await run(scan: scan, endpoint: endpoint, store: store) }
+        Task { await run(scan: scan, endpoint: endpoint, token: token, store: store) }
     }
 
-    private func run(scan: ScanRecord, endpoint: URL, store: ScanStore) async {
+    private func run(scan: ScanRecord, endpoint: URL, token: String, store: ScanStore) async {
         store.activeUploads.insert(scan.id)
         defer { store.activeUploads.remove(scan.id) }
 
@@ -79,6 +81,10 @@ final class Uploader: ObservableObject {
             request.httpMethod = "PUT"
             request.setValue("application/zip", forHTTPHeaderField: "Content-Type")
             request.setValue(scan.id, forHTTPHeaderField: "X-Scan-Id")
+            let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedToken.isEmpty {
+                request.setValue(trimmedToken, forHTTPHeaderField: "X-Upload-Token")
+            }
 
             let (_, response) = try await URLSession.shared.upload(for: request, fromFile: zipURL)
             guard let httpResponse = response as? HTTPURLResponse,

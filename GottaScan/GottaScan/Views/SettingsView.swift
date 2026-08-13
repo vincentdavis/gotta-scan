@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("uploadEndpoint") private var uploadEndpoint = ""
+    @AppStorage("uploadToken") private var uploadToken = ""
 
     var body: some View {
         Form {
@@ -10,10 +11,13 @@ struct SettingsView: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SecureField("Upload token (optional)", text: $uploadToken)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             } header: {
                 Text("Web app upload")
             } footer: {
-                Text("Scans are uploaded as a ZIP of the full scan bundle (images with embedded depth and gravity metadata, plus scan metadata). The processing pipeline behind this endpoint is a separate project.")
+                Text("Scans upload as a ZIP of the full scan bundle (images with embedded depth and gravity, plus metadata). If the server is configured with an upload token, enter it here — it's sent with each upload so only authorized devices can post scans.")
             }
 
             Section {

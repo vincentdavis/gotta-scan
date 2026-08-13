@@ -17,6 +17,14 @@
       <input id="photo-input" name="photos" type="file" multiple accept="image/*,.heic,.heif" hidden>
     </label>
 
+    {% if token_required %}
+    <input id="upload-token" name="upload_token" type="password" autocomplete="off"
+           placeholder="Upload token"
+           style="margin-top:12px; width:100%; box-sizing:border-box; padding:10px 12px;
+                  border:1px solid light-dark(#c3cfd9,#2c3c4b); border-radius:8px;
+                  background:light-dark(#fff,#0b1622); color:inherit;">
+    {% endif %}
+
     <div id="summary" class="muted" style="margin:12px 0; display:none;"></div>
     <div id="progress-wrap" style="display:none; margin:12px 0;">
       <div style="background:light-dark(#e3e9ee,#22303d); border-radius:999px; height:10px; overflow:hidden;">

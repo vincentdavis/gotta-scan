@@ -23,8 +23,12 @@ def scan_detail(request, scan_id):
 
 def upload_photos(request):
     """Upload a set of loose photos from the browser as a new scan."""
+    token_required = bool(settings.UPLOAD_TOKEN)
     if request.method != 'POST':
-        return render(request, 'scans/upload.html', {'min_photos': MIN_PHOTOS})
+        return render(request, 'scans/upload.html', {
+            'min_photos': MIN_PHOTOS,
+            'token_required': token_required,
+        })
 
     wants_json = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
@@ -34,9 +38,16 @@ def upload_photos(request):
         return render(
             request,
             'scans/upload.html',
-            {'min_photos': MIN_PHOTOS, 'error': message},
+            {'min_photos': MIN_PHOTOS, 'token_required': token_required, 'error': message},
             status=status,
         )
+
+    # Same token gate as the iOS bundle upload, so a public server can't be
+    # filled with anonymous photo uploads. Token via form field or header.
+    if token_required:
+        supplied = request.POST.get('upload_token', '') or request.headers.get('X-Upload-Token', '')
+        if supplied != settings.UPLOAD_TOKEN:
+            return fail('Invalid or missing upload token.', 403)
 
     photos = [f for f in request.FILES.getlist('photos') if is_photo(f.name)]
     if not photos:

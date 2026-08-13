@@ -476,6 +476,26 @@ class PhotoUploadTests(TestCase):
     def test_page_renders(self):
         self.assertContains(self.client.get('/upload/'), 'Drop photos here')
 
+    @override_settings(UPLOAD_TOKEN='sekret')
+    def test_photo_upload_requires_token_when_set(self):
+        rejected = self.client.post(
+            '/upload/', {'photos': [self.photo()]},
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        self.assertEqual(rejected.status_code, 403)
+        self.assertFalse(Scan.objects.exists())
+
+        accepted = self.client.post(
+            '/upload/', {'photos': [self.photo()], 'upload_token': 'sekret'},
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        self.assertEqual(accepted.status_code, 200)
+        self.assertTrue(Scan.objects.exists())
+
+    @override_settings(UPLOAD_TOKEN='sekret')
+    def test_photo_upload_page_shows_token_field(self):
+        self.assertContains(self.client.get('/upload/'), 'name="upload_token"')
+
     def test_upload_creates_queued_scan_with_worker_ready_bundle(self):
         photos = [self.photo(f'IMG_{i:04d}.JPG', (i * 20, 60, 30)) for i in range(3)]
         response = self.client.post('/upload/', {'photos': photos})

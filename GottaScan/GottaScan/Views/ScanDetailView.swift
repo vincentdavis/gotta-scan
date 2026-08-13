@@ -17,6 +17,7 @@ struct ScanDetailView: View {
     @StateObject private var resultService = ResultService()
 
     @AppStorage("uploadEndpoint") private var uploadEndpoint = ""
+    @AppStorage("uploadToken") private var uploadToken = ""
 
     @State private var showModelPreview = false
     @State private var exportedZip: ExportedZip?
@@ -271,7 +272,7 @@ struct ScanDetailView: View {
         guard let endpoint = URL(string: uploadEndpoint) else {
             return
         }
-        uploader.upload(scan: scan, endpoint: endpoint, store: store)
+        uploader.upload(scan: scan, endpoint: endpoint, token: uploadToken, store: store)
     }
 
     private func byteString(_ bytes: Int64) -> String {
