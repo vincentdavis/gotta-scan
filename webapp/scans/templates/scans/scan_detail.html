@@ -44,6 +44,37 @@
 </div>
 {% endif %}
 
+{% if scan.has_obj_mesh or foot_error %}
+<div class="card">
+  <h3 style="margin-top:0">Foot measurements</h3>
+  {% if foot_error %}<p style="color:#cc3b3b"><strong>{{ foot_error }}</strong></p>{% endif %}
+  {% with foot=scan.foot_measurements %}
+  {% if foot %}
+  <table>
+    <tr><td>Foot length</td><td><strong>{{ foot.length_mm }} mm</strong></td></tr>
+    <tr><td>Ball width</td><td><strong>{{ foot.ball_width_mm }} mm</strong></td></tr>
+    <tr><td>Heel width</td><td><strong>{{ foot.heel_width_mm }} mm</strong></td></tr>
+    <tr><td>Ball girth</td><td><strong>{{ foot.ball_girth_mm }} mm</strong></td></tr>
+    <tr><td>Instep girth</td><td><strong>{{ foot.instep_girth_mm }} mm</strong></td></tr>
+    <tr><td>Arch height</td><td><strong>{{ foot.arch_height_mm }} mm</strong></td></tr>
+  </table>
+  <p class="muted" style="margin-top:8px">
+    Ball landmark at {{ foot.ball_location_fraction }} of length from the heel.
+    Measurements are heuristic; validate against a known foot before relying on them.
+  </p>
+  {% elif scan.has_obj_mesh %}
+  <p class="muted">Extract the standard footwear measurements (length, widths, girths, arch) from this scan's mesh.</p>
+  {% endif %}
+  {% if scan.has_obj_mesh %}
+  <form method="post" action="{% url 'scans:analyze-foot' scan.scan_id %}" style="margin-top:6px">
+    {% csrf_token %}
+    <button type="submit" class="button">{% if foot %}Re-measure{% else %}Measure as foot{% endif %}</button>
+  </form>
+  {% endif %}
+  {% endwith %}
+</div>
+{% endif %}
+
 {% if scan.thumb_urls %}
 <div class="card">
   <h3 style="margin-top:0">Capture preview</h3>

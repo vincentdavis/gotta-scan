@@ -68,6 +68,24 @@ class Scan(models.Model):
     def exports_dir(self) -> Path:
         return self.models_dir / 'exports'
 
+    @property
+    def obj_dir(self) -> Path:
+        return self.models_dir / 'obj'
+
+    @property
+    def has_obj_mesh(self) -> bool:
+        return self.obj_dir.is_dir() and any(self.obj_dir.glob('*.obj'))
+
+    def foot_measurements(self) -> dict | None:
+        path = self.models_dir / 'foot_measurements.json'
+        if not path.exists():
+            return None
+        import json
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
     def exports_manifest(self) -> dict | None:
         manifest_path = self.exports_dir / 'exports.json'
         if not manifest_path.exists():

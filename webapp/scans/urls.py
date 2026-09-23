@@ -9,6 +9,7 @@ urlpatterns = [
     path('upload/', views.upload_photos, name='upload'),
     path('scans/<str:scan_id>/', views.scan_detail, name='detail'),
     path('scans/<str:scan_id>/viewer/', views.scan_viewer, name='viewer'),
+    path('scans/<str:scan_id>/analyze-foot/', views.analyze_foot, name='analyze-foot'),
 
     # iOS app upload + result status
     path('api/scans/upload', api.upload_bundle, name='api-upload'),

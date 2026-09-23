@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import quote
 
 from django.conf import settings
 from django.http import Http404, JsonResponse
@@ -18,7 +19,28 @@ def scan_list(request):
 
 def scan_detail(request, scan_id):
     scan = get_object_or_404(Scan, scan_id=scan_id)
-    return render(request, 'scans/scan_detail.html', {'scan': scan})
+    return render(request, 'scans/scan_detail.html', {
+        'scan': scan,
+        'foot_error': request.GET.get('foot_error'),
+    })
+
+
+def analyze_foot(request, scan_id):
+    """Run foot-measurement analysis on a scan's mesh (POST), then show the detail page."""
+    from .analysis.foot import FootMeasurementError, measure_foot_for_scan
+
+    scan = get_object_or_404(Scan, scan_id=scan_id)
+    detail = reverse('scans:detail', args=[scan.scan_id])
+    if request.method != 'POST':
+        return redirect(detail)
+    try:
+        measure_foot_for_scan(scan)
+    except FootMeasurementError as exc:
+        return redirect(f'{detail}?foot_error={quote(str(exc))}')
+    except Exception:
+        logger.exception('Foot analysis failed for %s', scan.scan_id)
+        return redirect(f'{detail}?foot_error={quote("Internal error during analysis.")}')
+    return redirect(detail)
 
 
 def upload_photos(request):
