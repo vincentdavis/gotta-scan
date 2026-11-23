@@ -18,3 +18,4 @@ __pycache__/
 .venv/
 webapp/data/
 webapp/data/db.sqlite3
+webapp/staticfiles/

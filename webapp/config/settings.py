@@ -13,8 +13,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # All mutable state (DB, uploaded scans) lives under data/ — one thing to back up.
-DATA_DIR = BASE_DIR / 'data'
-DATA_DIR.mkdir(exist_ok=True)
+# On Railway this points at a mounted volume (GOTTASCAN_DATA_DIR) so it survives deploys.
+DATA_DIR = Path(os.environ.get('GOTTASCAN_DATA_DIR', BASE_DIR / 'data'))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SECRET_KEY = os.environ.get(
     'GOTTASCAN_SECRET_KEY',
@@ -25,6 +26,12 @@ DEBUG = os.environ.get('GOTTASCAN_DEBUG', '1') == '1'
 
 # The iPhone uploads over LAN using this Mac's IP, so accept any host locally.
 ALLOWED_HOSTS = ['*']
+
+# Behind Railway's TLS-terminating proxy; trust its forwarded-proto + the public
+# domain for CSRF (the browser photo-upload form POSTs).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+_PUBLIC_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+CSRF_TRUSTED_ORIGINS = [f'https://{_PUBLIC_DOMAIN}'] if _PUBLIC_DOMAIN else []
 
 # Shared secret the Mac worker must send as X-Worker-Token.
 WORKER_TOKEN = os.environ.get('GOTTASCAN_WORKER_TOKEN', 'dev-worker-token')
@@ -64,6 +71,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -138,6 +146,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
