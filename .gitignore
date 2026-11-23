@@ -19,3 +19,12 @@ __pycache__/
 webapp/data/
 webapp/staticfiles/
 desktop/.recon-build/
+
+# Tauri build output + staged sidecar binaries (rebuild via desktop/build-sidecars.sh)
+desktop/src-tauri/target/
+desktop/src-tauri/bin/
+desktop/sidecar/build/
+desktop/sidecar/dist/
+desktop/sidecar/*.spec
+desktop/node_modules/
+desktop/dist/
