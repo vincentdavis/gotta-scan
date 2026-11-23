@@ -17,5 +17,4 @@ __pycache__/
 *.pyc
 .venv/
 webapp/data/
-webapp/data/db.sqlite3
 webapp/staticfiles/
