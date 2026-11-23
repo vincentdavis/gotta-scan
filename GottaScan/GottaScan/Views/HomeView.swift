@@ -121,9 +121,6 @@ private struct ScanRow: View {
                     if scan.hasModel {
                         Label("3D", systemImage: "cube")
                     }
-                    if scan.metadata.uploadedAt != nil {
-                        Image(systemName: "checkmark.icloud")
-                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

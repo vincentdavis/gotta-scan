@@ -6,7 +6,6 @@ struct ScanMetadata: Codable, Hashable {
     var completedAt: Date?
     var imageCount: Int
     var captureMode: String
-    var uploadedAt: Date?
 }
 
 struct ScanRecord: Identifiable, Hashable {
@@ -131,13 +130,6 @@ final class ScanStore: ObservableObject {
             }
             save(metadata: record.metadata, in: record.folderURL)
         }
-        refresh()
-    }
-
-    func markUploaded(_ scan: ScanRecord) {
-        var record = scan
-        record.metadata.uploadedAt = .now
-        save(metadata: record.metadata, in: record.folderURL)
         refresh()
     }
 

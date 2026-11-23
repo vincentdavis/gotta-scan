@@ -11,13 +11,7 @@ struct ScanDetailView: View {
 
     @EnvironmentObject private var store: ScanStore
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @StateObject private var reconstructor = Reconstructor()
-    @StateObject private var uploader = Uploader()
-    @StateObject private var resultService = ResultService()
-
-    @AppStorage("uploadEndpoint") private var uploadEndpoint = ""
-    @AppStorage("uploadToken") private var uploadToken = ""
 
     @State private var showModelPreview = false
     @State private var exportedZip: ExportedZip?
@@ -92,10 +86,10 @@ struct ScanDetailView: View {
             } header: {
                 Text("Preview model (on-device, reduced detail)")
             } footer: {
-                Text("The full-quality reconstruction happens in the web app pipeline. This preview only checks coverage.")
+                Text("The full-quality reconstruction runs in the GOTTA.SCAN Mac app. This preview only checks coverage before you leave the object.")
             }
 
-            Section("Export") {
+            Section {
                 if isExporting {
                     ProgressView("Preparing ZIP…")
                 } else {
@@ -110,49 +104,10 @@ struct ScanDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-            }
-
-            Section("Upload") {
-                if uploadEndpoint.isEmpty {
-                    Text("Set an upload endpoint in Settings first.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if store.activeUploads.contains(scan.id), uploader.status == .idle {
-                    // An upload started from a previous visit to this screen is still running.
-                    ProgressView("Uploading…")
-                } else {
-                    switch uploader.status {
-                    case .idle, .failed:
-                        Button {
-                            upload()
-                        } label: {
-                            Label("Upload to web app", systemImage: "icloud.and.arrow.up")
-                        }
-                        if case .failed(let message) = uploader.status {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-                    case .zipping:
-                        ProgressView("Compressing…")
-                    case .uploading:
-                        ProgressView("Uploading…")
-                    case .done:
-                        Label("Uploaded", systemImage: "checkmark.icloud")
-                            .foregroundStyle(.green)
-                    }
-                }
-                if let uploadedAt = scan.metadata.uploadedAt {
-                    Text("Last uploaded \(uploadedAt.formatted(.dateTime.month().day().hour().minute()))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if showServerSection {
-                Section("On the server") {
-                    serverResultContent
-                }
+            } header: {
+                Text("Export")
+            } footer: {
+                Text("Share the ZIP to your Mac (AirDrop), then run reconstruction, exports, and measurements in the GOTTA.SCAN Mac app.")
             }
 
             Section {
@@ -184,72 +139,6 @@ struct ScanDetailView: View {
                 ScanRecord.folderSizeBytes(of: folderURL)
             }.value
         }
-        .task(id: scan.metadata.uploadedAt) {
-            if scan.metadata.uploadedAt != nil { fetchServerResult() }
-        }
-        .onChange(of: uploader.status) { _, newStatus in
-            // A just-finished upload won't be reflected in this view's immutable
-            // scan copy, so trigger the server fetch directly on completion.
-            if newStatus == .done { fetchServerResult() }
-        }
-    }
-
-    private var showServerSection: Bool {
-        !uploadEndpoint.isEmpty && (scan.metadata.uploadedAt != nil || uploader.status == .done)
-    }
-
-    @ViewBuilder
-    private var serverResultContent: some View {
-        switch resultService.state {
-        case .idle, .loading:
-            HStack(spacing: 8) {
-                ProgressView()
-                Text("Checking status…").font(.caption).foregroundStyle(.secondary)
-            }
-        case .loaded(let result):
-            if result.isComplete {
-                if let dims = result.dimensionsText {
-                    Label(dims, systemImage: "ruler")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Button {
-                    openURL(result.bestLink)
-                } label: {
-                    Label("View 3D model on server", systemImage: "safari")
-                }
-                ShareLink(item: result.detailURL) {
-                    Label("Share link", systemImage: "square.and.arrow.up")
-                }
-            } else if result.isFailed {
-                Label(result.errorMessage ?? "Processing failed on the server.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                shareDetailLink(result.detailURL)
-            } else {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Processing on the server…").font(.caption).foregroundStyle(.secondary)
-                }
-                Button("Refresh") { fetchServerResult() }.font(.caption)
-                shareDetailLink(result.detailURL)
-            }
-        case .failed(let message):
-            Text(message).font(.caption).foregroundStyle(.secondary)
-            Button("Retry") { fetchServerResult() }.font(.caption)
-        }
-    }
-
-    @ViewBuilder
-    private func shareDetailLink(_ url: URL) -> some View {
-        ShareLink(item: url) {
-            Label("Share link", systemImage: "square.and.arrow.up")
-        }
-    }
-
-    private func fetchServerResult() {
-        guard !uploadEndpoint.isEmpty else { return }
-        resultService.fetch(uploadEndpoint: uploadEndpoint, scanID: scan.id)
     }
 
     private func exportZip() {
@@ -266,13 +155,6 @@ struct ScanDetailView: View {
             }
             isExporting = false
         }
-    }
-
-    private func upload() {
-        guard let endpoint = URL(string: uploadEndpoint) else {
-            return
-        }
-        uploader.upload(scan: scan, endpoint: endpoint, token: uploadToken, store: store)
     }
 
     private func byteString(_ bytes: Int64) -> String {

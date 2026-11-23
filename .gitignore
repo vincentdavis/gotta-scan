@@ -26,3 +26,6 @@ desktop/sidecar/dist/
 desktop/sidecar/*.spec
 desktop/node_modules/
 desktop/dist/
+
+# Xcode local build output
+GottaScan/build/
