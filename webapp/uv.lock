@@ -86,12 +86,32 @@ wheels = [
 ]
 
 [[package]]
+name = "gottascan-geometry"
+version = "0.1.0"
+source = { editable = "../geometry" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "shapely" },
+    { name = "trimesh" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "scipy", specifier = ">=1.11" },
+    { name = "shapely", specifier = ">=2.0" },
+    { name = "trimesh", specifier = ">=4.0" },
+]
+
+[[package]]
 name = "gottascan-web"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "django" },
     { name = "fast-simplification" },
+    { name = "gottascan-geometry" },
     { name = "gunicorn" },
     { name = "networkx" },
     { name = "numpy" },
@@ -109,6 +129,7 @@ dependencies = [
 requires-dist = [
     { name = "django", specifier = ">=5.2" },
     { name = "fast-simplification", specifier = ">=0.1.13" },
+    { name = "gottascan-geometry", editable = "../geometry" },
     { name = "gunicorn", specifier = ">=27.0.1" },
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = ">=2.5.1" },

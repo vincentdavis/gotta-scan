@@ -1,0 +1,11 @@
+[project]
+name = "gottascan-sidecar"
+version = "0.1.0"
+description = "Local Python helper the GOTTA.SCAN desktop app calls for mesh geometry (foot measurements, print exports)."
+requires-python = ">=3.14"
+dependencies = [
+    "gottascan-geometry",
+]
+
+[tool.uv.sources]
+gottascan-geometry = { path = "../../geometry", editable = true }

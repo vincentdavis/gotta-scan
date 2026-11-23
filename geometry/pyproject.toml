@@ -1,0 +1,15 @@
+[project]
+name = "gottascan-geometry"
+version = "0.1.0"
+description = "Django-free mesh geometry for GOTTA.SCAN: foot measurements and print exports, shared by the web app and the desktop sidecar."
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.0",
+    "trimesh>=4.0",
+    "shapely>=2.0",
+    "scipy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,4 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
 
 // Scaffold wiring: remember the server URL and open the scan pipeline in the
 // browser for now. The native capture / reconstruct / view flow replaces this.
@@ -16,5 +17,20 @@ window.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("serverUrl", url);
     status.textContent = `Opening ${url} …`;
     await openUrl(url);
+  });
+
+  const meshInput = document.querySelector<HTMLInputElement>("#mesh-input")!;
+  const measureOut = document.querySelector<HTMLPreElement>("#measure-out")!;
+  document.querySelector("#measure-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const mesh = meshInput.value.trim();
+    if (!mesh) return;
+    measureOut.textContent = "Measuring…";
+    try {
+      const json = await invoke<string>("measure_foot", { meshPath: mesh });
+      measureOut.textContent = JSON.stringify(JSON.parse(json), null, 2);
+    } catch (err) {
+      measureOut.textContent = `Error: ${err}`;
+    }
   });
 });
