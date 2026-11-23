@@ -8,6 +8,9 @@ dependencies = [
     "trimesh>=4.0",
     "shapely>=2.0",
     "scipy>=1.11",
+    "pymeshlab>=2025.7",
+    "networkx>=3.0",
+    "fast-simplification>=0.1.9",
 ]
 
 [build-system]

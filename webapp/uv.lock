@@ -90,7 +90,10 @@ name = "gottascan-geometry"
 version = "0.1.0"
 source = { editable = "../geometry" }
 dependencies = [
+    { name = "fast-simplification" },
+    { name = "networkx" },
     { name = "numpy" },
+    { name = "pymeshlab" },
     { name = "scipy" },
     { name = "shapely" },
     { name = "trimesh" },
@@ -98,7 +101,10 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fast-simplification", specifier = ">=0.1.9" },
+    { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.0" },
+    { name = "pymeshlab", specifier = ">=2025.7" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "shapely", specifier = ">=2.0" },
     { name = "trimesh", specifier = ">=4.0" },

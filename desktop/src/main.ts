@@ -33,4 +33,22 @@ window.addEventListener("DOMContentLoaded", () => {
       measureOut.textContent = `Error: ${err}`;
     }
   });
+
+  const objDir = document.querySelector<HTMLInputElement>("#objdir-input")!;
+  const outDir = document.querySelector<HTMLInputElement>("#outdir-input")!;
+  const exportsOut = document.querySelector<HTMLPreElement>("#exports-out")!;
+  document.querySelector("#exports-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!objDir.value.trim() || !outDir.value.trim()) return;
+    exportsOut.textContent = "Generating exports…";
+    try {
+      const json = await invoke<string>("generate_exports", {
+        objDir: objDir.value.trim(),
+        outDir: outDir.value.trim(),
+      });
+      exportsOut.textContent = JSON.stringify(JSON.parse(json), null, 2);
+    } catch (err) {
+      exportsOut.textContent = `Error: ${err}`;
+    }
+  });
 });

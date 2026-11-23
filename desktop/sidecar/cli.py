@@ -4,12 +4,14 @@ The Tauri app shells out to this and reads JSON from stdout. Commands return a
 single JSON object; errors return {"error": "..."} with a non-zero exit code.
 
   uv run python cli.py measure-foot <mesh.obj>
+  uv run python cli.py exports <obj-dir> <out-dir>
 """
 
 import argparse
 import json
 import sys
 
+from gottascan_geometry.exports import ExportError, generate_exports
 from gottascan_geometry.foot import (
     FootMeasurementError,
     load_foot_mesh,
@@ -32,6 +34,15 @@ def cmd_measure_foot(args) -> None:
         _emit({'error': f'{type(exc).__name__}: {exc}'}, error=True)
 
 
+def cmd_exports(args) -> None:
+    try:
+        _emit(generate_exports(args.obj_dir, args.out_dir))
+    except ExportError as exc:
+        _emit({'error': str(exc)}, error=True)
+    except Exception as exc:
+        _emit({'error': f'{type(exc).__name__}: {exc}'}, error=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog='gottascan-sidecar')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -39,6 +50,11 @@ def main() -> None:
     mf = sub.add_parser('measure-foot', help='Footwear measurements from an OBJ mesh (metres in, mm out).')
     mf.add_argument('mesh', help='Path to the reconstructed .obj')
     mf.set_defaults(func=cmd_measure_foot)
+
+    ex = sub.add_parser('exports', help='Generate GLB/3MF/STL/OnShape-OBJ (hole-filled) from an OBJ master.')
+    ex.add_argument('obj_dir', help='Directory containing the reconstructed .obj')
+    ex.add_argument('out_dir', help='Directory to write the exports into')
+    ex.set_defaults(func=cmd_exports)
 
     args = parser.parse_args()
     args.func(args)

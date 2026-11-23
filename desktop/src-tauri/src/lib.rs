@@ -10,12 +10,14 @@ fn sidecar_dir() -> PathBuf {
         .join("sidecar")
 }
 
-/// Run the Python sidecar's `measure-foot` on an OBJ and return its JSON string.
-#[tauri::command]
-fn measure_foot(mesh_path: String) -> Result<String, String> {
+/// Run the Python sidecar with the given args and return its stdout JSON string.
+fn run_sidecar(args: &[&str]) -> Result<String, String> {
+    let mut full = vec!["run", "python", "cli.py"];
+    full.extend_from_slice(args);
+
     let output = Command::new("uv")
         .current_dir(sidecar_dir())
-        .args(["run", "python", "cli.py", "measure-foot", &mesh_path])
+        .args(&full)
         .output()
         .map_err(|e| format!("failed to launch sidecar: {e}"))?;
 
@@ -29,11 +31,21 @@ fn measure_foot(mesh_path: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn measure_foot(mesh_path: String) -> Result<String, String> {
+    run_sidecar(&["measure-foot", &mesh_path])
+}
+
+#[tauri::command]
+fn generate_exports(obj_dir: String, out_dir: String) -> Result<String, String> {
+    run_sidecar(&["exports", &obj_dir, &out_dir])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![measure_foot])
+        .invoke_handler(tauri::generate_handler![measure_foot, generate_exports])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
