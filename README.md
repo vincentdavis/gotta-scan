@@ -108,3 +108,7 @@ Open [`GottaScan/GottaScan.xcodeproj`](GottaScan/) in Xcode to build and run.
 Early, actively developed. The end goals are object-specific scanning workflows
 for **bike parts** and **cycling shoes**; foot measurement is the first
 object-specific analysis module.
+
+## License
+
+[GNU GPL v3.0](LICENSE).
