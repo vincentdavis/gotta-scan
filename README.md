@@ -1,99 +1,87 @@
 # GOTTA.SCAN
 
 A photogrammetry pipeline that turns a guided iPhone scan into a clean,
-measured, print-ready 3D model. Capture happens on the phone; reconstruction
-runs on a Mac; everything is viewed, exported, and analyzed in a web app.
+measured, print-ready 3D model. Capture happens on the phone; everything else —
+reconstruction, exports, and measurement — runs locally in a Mac desktop app.
+No server required.
 
 The capture app is deliberately **generic** — object-specific analysis (bike
-parts, cycling shoes, feet, …) lives in the web app and runs after upload.
+parts, cycling shoes, feet, …) runs in the desktop app after the photos land on
+the Mac.
 
 ## How it works
 
 ```
- iPhone (LiDAR)          Web app (Django)           Mac worker
- ───────────────         ────────────────           ───────────────────────
- Guided 3D capture  ──▶  Receives bundle,      ◀──  Polls for queued jobs
- photos + depth +        queues the job             Runs Apple
- gravity, zipped         ─────────────────▶         PhotogrammetrySession
-                         Stores the model           (RealityKit, Swift CLI)
- View / AR Quick Look ◀─ Exports GLB/STL/3MF   ◀──  Posts USDZ + OBJ back
-                         + object analysis
+ iPhone (LiDAR)              Mac desktop app (GOTTA.SCAN)
+ ───────────────            ──────────────────────────────────────
+ Guided 3D capture   ──▶    Reconstruct  — Apple PhotogrammetrySession
+ photos + depth +    photos   (RealityKit, Swift sidecar) → textured mesh
+ gravity              folder   Export      — GLB / STL / 3MF / OBJ, mm scale
+                               Measure     — object analysis (e.g. feet)
 ```
 
 1. **Capture** — the iPhone app shoots a set of photos with embedded depth and
-   gravity, bundles them into a ZIP, and uploads it to the web app.
-2. **Queue** — the web app stores the bundle and marks the scan as queued.
-3. **Reconstruct** — a Mac worker claims the job and runs Apple's
-   `PhotogrammetrySession` (via a bundled Swift CLI) to produce a textured mesh.
-4. **Export & analyze** — the web app hole-fills the mesh, exports GLB / STL /
-   3MF / OBJ at real-world scale, and runs object-specific analysis (e.g. foot
+   gravity.
+2. **Transfer** — move the photos to the Mac (AirDrop, or any shared/watched
+   folder). The desktop app simply points at that folder.
+3. **Reconstruct** — the app runs Apple's `PhotogrammetrySession` (via a bundled
+   Swift sidecar) to produce a textured mesh.
+4. **Export & analyze** — the app hole-fills the mesh, exports GLB / STL / 3MF /
+   OBJ at real-world scale, and runs object-specific analysis (e.g. foot
    measurements).
-5. **View** — inspect the model in the browser (measure, clip, wireframe) or in
-   AR via Quick Look on iOS.
 
 ## Components
 
 | Path | What it is | Stack |
 |------|-----------|-------|
 | [`GottaScan/`](GottaScan/) | iOS capture app | SwiftUI, RealityKit, requires a LiDAR iPhone (Pro) |
-| [`webapp/`](webapp/) | Upload, queue, 3D viewer, exports, analysis | Django 5.2, Python 3.14, SQLite |
-| [`worker/`](worker/) | Mac photogrammetry worker | Python poller + Swift CLI over `PhotogrammetrySession` |
+| [`desktop/`](desktop/) | Mac desktop app — reconstruct, export, measure | Tauri v2 (Rust + WKWebView), Swift + Python sidecars |
+| [`geometry/`](geometry/) | Shared, Django-free geometry package (measurements + exports) | Python 3.14, trimesh / pymeshlab |
+| [`worker/`](worker/) | Swift `PhotogrammetryCLI` (compiled into the desktop app's sidecar) | Swift CLI over `PhotogrammetrySession` |
 
-## Web app
+## Desktop app
 
-Clean, dark UI for every scan in the pipeline.
+A single Mac app that runs the whole pipeline locally. The window exposes three
+actions, each backed by a bundled sidecar binary (no toolchain needed on the
+target Mac):
 
-| Scan list | Scan detail — exports + analysis | 3D viewer |
-|-----------|----------------------------------|-----------|
-| ![Scan list](docs/images/web-scan-list.jpg) | ![Scan detail](docs/images/web-scan-detail.jpg) | ![3D viewer](docs/images/web-viewer.jpg) |
+- **Reconstruct from photos** — folder of HEIC/JPG → `model.usdz` + OBJ master.
+- **Generate exports** — OBJ → GLB (m), STL (mm), 3MF (mm), OnShape OBJ, plus a
+  manifest with real-world dimensions and watertightness.
+- **Measure a foot** — OBJ → length, ball/heel widths, ball/instep girths, arch
+  height.
 
-The detail page surfaces real-world dimensions, watertight print files
-(STL / 3MF), a GLB for web/Blender, an OBJ for OnShape, and — for feet — a full
-measurement breakdown (length, widths, girths). The viewer supports measure,
-clip, and wireframe.
-
-### Run it
-
-```bash
-cd webapp
-uv run python manage.py migrate
-uv run python manage.py runserver 127.0.0.1:8300
-```
-
-Then open http://127.0.0.1:8300/.
-
-Config via environment variables (defaults are dev-friendly; override for
-deploy):
-
-| Variable | Purpose |
-|----------|---------|
-| `GOTTASCAN_SECRET_KEY` | Django secret key |
-| `GOTTASCAN_DEBUG` | `1` (default) / `0` |
-| `GOTTASCAN_WORKER_TOKEN` | Shared secret the Mac worker sends as `X-Worker-Token` |
-| `GOTTASCAN_UPLOAD_TOKEN` | Optional shared secret for scan uploads (`X-Upload-Token`); empty = open |
-
-## Mac worker
-
-Polls the web app for queued scans, reconstructs them with Apple's
-`PhotogrammetrySession`, and posts the model back. The Swift CLI is compiled on
-first use (cached in `worker/.build/`), so you need macOS with the Xcode command
-line tools.
+### Build it
 
 ```bash
-uv run --with requests worker/worker.py --server http://127.0.0.1:8300
+cd desktop
+npm install
+./build-sidecars.sh        # freeze the Python sidecar + compile the Swift CLI
+npm run tauri build        # produces GOTTA.SCAN.app + .dmg
 ```
 
-Flags: `--once` (process one job and exit), `--simulate` (skip real
-photogrammetry and emit a test cube, useful for exercising the export pipeline).
+`build-sidecars.sh` stages two binaries as Tauri `externalBin`:
+`gotta-sidecar` (frozen Python: measurements + exports) and `photogrammetry-cli`
+(Swift reconstruction). For iterative work, `npm run tauri dev` uses the same
+staged binaries.
+
+> The `.app` is currently unsigned. It runs on the build machine; distributing
+> to other Macs needs code-signing + notarization (Apple Developer account).
+
+## Shared geometry
+
+[`geometry/`](geometry/) is a standalone Python package (`gottascan-geometry`)
+holding all mesh logic — canonical foot orientation, cross-section measurements,
+hole-filling, and multi-format export. The desktop sidecar depends on it, so the
+measurement/export code has a single source of truth.
 
 ## iOS app
 
-SwiftUI app for guided LiDAR capture. Point it at your web app in Settings; it
-uploads each scan as a ZIP bundle (photos with embedded depth and gravity, plus
-metadata).
+SwiftUI app for guided LiDAR capture. It shoots each scan as a set of photos with
+embedded depth and gravity; transfer those to the Mac for reconstruction.
 
 <p>
-  <img src="docs/images/ios-settings.png" alt="iOS Settings — web app upload config" width="300">
+  <img src="docs/images/ios-settings.png" alt="iOS Settings" width="300">
 </p>
 
 > **Note:** guided 3D capture needs a LiDAR-equipped iPhone (Pro models, e.g.

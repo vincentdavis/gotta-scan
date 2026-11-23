@@ -12,12 +12,10 @@ build/
 .build/
 .swiftpm/
 
-# Python / Django
+# Python
 __pycache__/
 *.pyc
 .venv/
-webapp/data/
-webapp/staticfiles/
 desktop/.recon-build/
 
 # Tauri build output + staged sidecar binaries (rebuild via desktop/build-sidecars.sh)

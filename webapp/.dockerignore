@@ -1,7 +1,0 @@
-data/
-staticfiles/
-.venv/
-__pycache__/
-*.pyc
-.git/
-*.sqlite3
