@@ -20,6 +20,14 @@
       </form>
       <p id="status-msg" class="muted"></p>
 
+      <h3>Reconstruct from photos (Swift)</h3>
+      <form class="row" id="recon-form">
+        <input id="images-input" placeholder="Images directory (HEIC/JPG)" />
+        <input id="reconout-input" placeholder="Output directory (OBJ + USDZ)" />
+        <button type="submit">Reconstruct</button>
+      </form>
+      <pre id="recon-out" class="muted"></pre>
+
       <h3>Measure a foot (local sidecar)</h3>
       <form class="row" id="measure-form">
         <input id="mesh-input" placeholder="/path/to/model.obj" />

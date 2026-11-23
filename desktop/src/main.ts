@@ -19,6 +19,24 @@ window.addEventListener("DOMContentLoaded", () => {
     await openUrl(url);
   });
 
+  const imagesInput = document.querySelector<HTMLInputElement>("#images-input")!;
+  const reconOutInput = document.querySelector<HTMLInputElement>("#reconout-input")!;
+  const reconOut = document.querySelector<HTMLPreElement>("#recon-out")!;
+  document.querySelector("#recon-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!imagesInput.value.trim() || !reconOutInput.value.trim()) return;
+    reconOut.textContent = "Reconstructing… (minutes)";
+    try {
+      const json = await invoke<string>("reconstruct", {
+        imagesDir: imagesInput.value.trim(),
+        outDir: reconOutInput.value.trim(),
+      });
+      reconOut.textContent = JSON.stringify(JSON.parse(json), null, 2);
+    } catch (err) {
+      reconOut.textContent = `Error: ${err}`;
+    }
+  });
+
   const meshInput = document.querySelector<HTMLInputElement>("#mesh-input")!;
   const measureOut = document.querySelector<HTMLPreElement>("#measure-out")!;
   document.querySelector("#measure-form")?.addEventListener("submit", async (e) => {

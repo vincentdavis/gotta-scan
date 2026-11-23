@@ -18,3 +18,4 @@ __pycache__/
 .venv/
 webapp/data/
 webapp/staticfiles/
+desktop/.recon-build/
